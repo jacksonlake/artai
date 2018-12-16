@@ -39,7 +39,7 @@ class ConvNet(nn.Module):
 
 
         self.fc1 = torch.nn.Linear(32*32*8, 64)
-        self.fc2 = torch.nn.Linear(64, 1)
+        self.fc2 = torch.nn.Linear(64, 4)
         torch.nn.init.xavier_uniform(self.conv1.weight) #initialize weights
         torch.nn.init.xavier_uniform(self.conv2.weight)
         torch.nn.init.xavier_uniform(self.conv3.weight)
@@ -61,7 +61,7 @@ class ConvNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        return F.sigmoid(x)
+        return F.softmax(x)
 
 
 
@@ -71,7 +71,7 @@ class DataSetCatsDogs_test(Dataset):
     
     def __init__(self, root_dir,transform): #download,read,transform the data
         self.root_dir = root_dir
-        self.class_list = ('drawings','sculpture')
+        self.class_list = ('drawings','iconography','painting','sculpture')
         self.transform = transform
 
     def __getitem__(self, index): #superfast 0(1) method, return item by index
@@ -86,13 +86,7 @@ class DataSetCatsDogs_test(Dataset):
             img = filepath + '/' + self.class_list[folder_number] + '.' + str(file_number).zfill(4) + '.jpg'
         
         
-        label = torch.FloatTensor(1,1)
-        
-        if (self.class_list[folder_number] == self.class_list[0]):
-            label[0,0] = 1
-        if (self.class_list[folder_number] == self.class_list[1]):
-            label[0,0] = 0
-        
+        label = folder_number
         #print('Got file:', img, 'with label:',label)
         #print('File#',file_number,'Folder:',folder_number) For debug purposes
 
@@ -113,14 +107,14 @@ def main():
     warnings.filterwarnings("ignore")  #not to dlood the output
     torch.set_printoptions(precision=10)   #to get a nice output
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu') #working on cuda, not on the CPU
-
     dtype=torch.cuda.FloatTensor
-
     train_transformer = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]) #normalize the data         
 
     cnn = ConvNet() #Create the instanse of net 
     cnn = cnn.cuda()
+    class_list = ('drawings','iconography','painting','sculpture')
+
 
     cnn.eval()
     cnn = torch.load('artAI.pt')
@@ -133,17 +127,16 @@ def main():
     for inputs,labels in test_loader:
 
             inputs, labels = Variable(inputs), Variable(labels)
-            inputs, labels = Variable(inputs.type(dtype)), Variable(labels.type(dtype))
+            inputs, labels = Variable(inputs.type(dtype)), Variable(labels.type(torch.cuda.LongTensor))
             outputs = cnn(inputs)
+            res_cult,index  = torch.max(outputs,1)
+            #error_size = labels - outputs
 
-            error_size = labels - outputs
-            if (labels == 1 and torch.abs(error_size) > 0.4): #class 1 - cats
-                error_class_1 = error_class_1 + 1
-            if (labels == 0 and torch.abs(error_size) > 0.4):
-                error_class_0 = error_class_0 + 1
-            if (torch.abs(error_size) > 0.4):
-                n_errors = n_errors + 1
-    print('Errors in class 1, cats:', error_class_1,'Errors in class 0, dogs:',error_class_0)
+            if (index!=labels):
+                n_errors=n_errors+1
+                print('Found error in class',class_list[labels.data.cpu().numpy()[0]])
+
+
     print('Total amount of errors:',n_errors)
 
 
