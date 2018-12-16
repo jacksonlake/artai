@@ -39,7 +39,7 @@ class ConvNet(nn.Module):
 
 
         self.fc1 = torch.nn.Linear(32*32*8, 64)
-        self.fc2 = torch.nn.Linear(64, 1)
+        self.fc2 = torch.nn.Linear(64, 4)
         torch.nn.init.xavier_uniform(self.conv1.weight) #initialize weights
         torch.nn.init.xavier_uniform(self.conv2.weight)
         torch.nn.init.xavier_uniform(self.conv3.weight)
@@ -61,7 +61,7 @@ class ConvNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
 
-        return F.sigmoid(x)
+        return F.softmax(x)
 
 
 
@@ -71,7 +71,8 @@ class DataSetCatsDogs(Dataset):
     
     def __init__(self, root_dir,transform): #download,read,transform the data
         self.root_dir = root_dir
-        self.class_list = ('drawings','sculpture')
+        self.class_list = ('drawings','iconography','painting','sculpture')
+
         self.transform = transform
 
     def __getitem__(self, index): #superfast 0(1) method, return item by index
@@ -87,12 +88,8 @@ class DataSetCatsDogs(Dataset):
             img = filepath + '/' + self.class_list[folder_number] + '.' + str(file_number).zfill(4) + '.jpg'
         
         
-        label = torch.FloatTensor(1,1)
-        
-        if (self.class_list[folder_number] == self.class_list[0]):
-            label[0,0] = 1
-        if (self.class_list[folder_number] == self.class_list[1]):
-            label[0,0] = 0
+        label = folder_number
+
 
         sample = Image.open(img)
         sample = sample.convert('RGB')
@@ -101,49 +98,7 @@ class DataSetCatsDogs(Dataset):
 
     def __len__(self): #return data length 
 
-        return 1000*2
-
-
-class DataSetCatsDogs_test(Dataset):
-    #Test set
-    
-    def __init__(self, root_dir,transform): #download,read,transform the data
-        self.root_dir = root_dir
-        self.class_list = ('drawings','sculpture')
-        self.transform = transform
-
-    def __getitem__(self, index): #superfast 0(1) method, return item by index
-        #Goes into the folder with the database
-        #According to the class list specified in the constructor goes into every folder 
-        #and loads all the images in the folder. The line "img ="
-        #varies to every database
-        file_number = index
-        folder_number = index % len(self.class_list)
-        class_folder = os.path.join(self.root_dir, self.class_list[folder_number])
-        for filepath in glob.iglob(class_folder):
-            img = filepath + '/' + self.class_list[folder_number] + '.' + str(file_number).zfill(4) + '.jpg'
-        
-        
-        label = torch.FloatTensor(1,1)
-        
-        if (self.class_list[folder_number] == self.class_list[0]):
-            label[0,0] = 1
-        if (self.class_list[folder_number] == self.class_list[1]):
-            label[0,0] = 0
-        
-        #print('Got file:', img, 'with label:',label)
-        #print('File#',file_number,'Folder:',folder_number) For debug purposes
-
-        sample = Image.open(img)
-        sample = sample.convert('RGB')
-        sample = sample.resize((64,64)) #Resizing images to universal size
-        return self.transform(sample), label     #first position is data, second is labels, both should be tensor
-
-    def __len__(self): #return data length 
-
-        return 60*2
-
-
+        return 1000*4
 
 
 def main():
@@ -165,14 +120,14 @@ def main():
     cnn = cnn.cuda()
 
 
-    criterion = torch.nn.BCELoss().cuda() #Cross Entropy Loss
+    criterion = torch.nn.CrossEntropyLoss().cuda() #Cross Entropy Loss
     optimizer = optim.Adam(cnn.parameters(), lr=0.001) #Optimizer with learning rate 0.001
     running_loss = 0 
     total_train_loss = 0
     for epoch in range(38):  #32 it was
         running_loss = 0
         for inputs, labels in train_loader:
-            inputs, labels = Variable(inputs.type(dtype)), Variable(labels.type(dtype))
+            inputs, labels = Variable(inputs.type(dtype)), Variable(labels.type(torch.cuda.LongTensor))
 
 
             optimizer.zero_grad()             #Set the parameter gradients to zero
@@ -187,28 +142,6 @@ def main():
 
     cnn.eval()
     torch.save(cnn, 'artAI.pt')
-    db_test = DataSetCatsDogs_test('dataset_updated/validation_set', train_transformer)
-    test_loader = DataLoader(dataset = db_test, shuffle=True,num_workers=2)
-    n_errors = 0
-    error_class_1 = 0
-    error_class_0 = 0
-    error_size = 0
-    for inputs,labels in test_loader:
-
-            inputs, labels = Variable(inputs), Variable(labels)
-            inputs, labels = Variable(inputs.type(dtype)), Variable(labels.type(dtype))
-            outputs = cnn(inputs)
-
-            error_size = labels - outputs
-            if (labels == 1 and torch.abs(error_size) > 0.4): #class 1 - cats
-                error_class_1 = error_class_1 + 1
-            if (labels == 0 and torch.abs(error_size) > 0.4):
-                error_class_0 = error_class_0 + 1
-            if (torch.abs(error_size) > 0.4):
-                n_errors = n_errors + 1
-    print('Errors in class 1, cats:', error_class_1,'Errors in class 0, dogs:',error_class_0)
-    print('Total amount of errors:',n_errors)
-
 
 
  
